@@ -44,4 +44,4 @@ Any questions about our work can be asked in issues.
 
 **Contact**
 
-If you have any questions, please send an email to lihongzhao@gs.zzu.edu.cn or 634110890@qq.com
+If you have any questions, please send an email to lihongzhao@gs.zzu.edu.cn
