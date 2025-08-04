@@ -248,33 +248,42 @@ class Generator(nn.Module):
         else:
             return self.infer(source_embed, source_embed2, source_pad_mask, max_len, top_k, bos_id, pad_id)
 
-    def infer(self, source_embed, source_embed2, source_pad_mask=None, max_len=100, top_k=1, bos_id=1, pad_id=3):
-        outputs = torch.ones((top_k, source_embed.shape[0], 1), dtype=torch.long).to(source_embed.device) * bos_id
-        scores = torch.zeros((top_k, source_embed.shape[0]), dtype=torch.float32).to(source_embed.device)
+        def infer(self, source_embed, source_pad_mask=None, max_len=100, top_k=1, bos_id=1, pad_id=3):
+        outputs = torch.ones((top_k, source_embed.shape[0], 1), dtype=torch.long).to(source_embed.device) * bos_id # (K,B,1) <s>
+        scores = torch.zeros((top_k, source_embed.shape[0]), dtype=torch.float32).to(source_embed.device) # (K,B)
+
         for _ in range(1,max_len):
             possible_outputs = []
             possible_scores = []
+
             for k in range(top_k):
-                output = outputs[k]
-                score = scores[k]
-                att, emb = self.forward(source_embed, source_embed2, output, source_pad_mask=source_pad_mask, target_pad_mask=(output == pad_id))
-                val, idx = torch.topk(att[:,-1,:], top_k)
-                log_val = -torch.log(val)
+                output = outputs[k] # (B,L)
+                score = scores[k] # (B)
+                
+                att, emb = self.forward(source_embed, output, source_pad_mask=source_pad_mask, target_pad_mask=(output == pad_id))
+                val, idx = torch.topk(att[:,-1,:], top_k) # (B,K)
+                log_val = -torch.log(val) # (B,K)
+                
                 for i in range(top_k):
-                    new_output = torch.cat([output, idx[:,i].view(-1,1)], dim=-1)
-                    new_score = score + log_val[:,i].view(-1)
-                    possible_outputs.append(new_output.unsqueeze(0))
-                    possible_scores.append(new_score.unsqueeze(0))
-            possible_outputs = torch.cat(possible_outputs, dim=0)
-            possible_scores = torch.cat(possible_scores, dim=0)
-            val, idx = torch.topk(possible_scores, top_k, dim=0)
-            col_idx = torch.arange(idx.shape[1], device=idx.device).unsqueeze(0).repeat(idx.shape[0],1)
-            outputs = possible_outputs[idx,col_idx]
-            scores = possible_scores[idx,col_idx]
-        val, idx = torch.topk(scores, 1, dim=0)
-        col_idx = torch.arange(idx.shape[1], device=idx.device).unsqueeze(0).repeat(idx.shape[0],1)
-        output = outputs[idx,col_idx]
-        return output.squeeze(0)
+                    new_output = torch.cat([output, idx[:,i].view(-1,1)], dim=-1) # (B,L+1)
+                    new_score = score + log_val[:,i].view(-1) # (B)
+                    possible_outputs.append(new_output.unsqueeze(0)) # (1,B,L+1)
+                    possible_scores.append(new_score.unsqueeze(0)) # (1,B)
+            
+            possible_outputs = torch.cat(possible_outputs, dim=0) # (K^2,B,L+1)
+            possible_scores = torch.cat(possible_scores, dim=0) # (K^2,B)
+
+            # Pruning the solutions
+            val, idx = torch.topk(possible_scores, top_k, dim=0) # (K,B)
+            col_idx = torch.arange(idx.shape[1], device=idx.device).unsqueeze(0).repeat(idx.shape[0],1) # (K,B)
+            outputs = possible_outputs[idx,col_idx] # (K,B,L+1)
+            scores = possible_scores[idx,col_idx] # (K,B)
+
+        val, idx = torch.topk(scores, 1, dim=0) # (1,B)
+        col_idx = torch.arange(idx.shape[1], device=idx.device).unsqueeze(0).repeat(idx.shape[0],1) # (K,B)
+        output = outputs[idx,col_idx] # (1,B,L)
+        score = scores[idx,col_idx] # (1,B)
+        return output.squeeze(0) # (B,L)
 
     def generate_square_subsequent_mask_with_source(self, src_sz, tgt_sz, mode='eye'):
         mask = self.generate_square_subsequent_mask(src_sz + tgt_sz)
