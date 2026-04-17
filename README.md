@@ -33,6 +33,8 @@ Run the code:
 python train.py
 ```
 
+For raw IU X-Ray adaptation on AutoDL, use `python run_indiana_raw.py ...` and see [docs/iu_xray_autodl_runbook_zh.md](docs/iu_xray_autodl_runbook_zh.md).
+
 **Test**
 
 Pleause use the [nlg-eval](https://github.com/Maluuba/nlg-eval) and the [chexpert](https://github.com/MIT-LCP/mimic-cxr/tree/master/txt/chexpert).

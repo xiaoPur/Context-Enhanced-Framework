@@ -7,6 +7,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 import sentencepiece as spm
 from PIL import Image, ImageFile
+from indiana_raw_dataset import IndianaRawIUXRAY
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 

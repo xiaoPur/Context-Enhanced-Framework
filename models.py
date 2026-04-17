@@ -219,9 +219,10 @@ class Generator(nn.Module):
         self.token_embedding = nn.Embedding(num_tokens, embed_dim)
         self.posit_embedding = nn.Embedding(num_posits, embed_dim)
         self.transform = nn.ModuleList([GenTransformerLayer(embed_dim, num_heads, fwd_dim, dropout) for _ in range(num_layers)])
-        self.attention = MultiheadAttention(embed_dim, num_heads)
+        self.output_layer = nn.Linear(embed_dim, num_tokens)
         self.num_tokens = num_tokens
         self.num_posits = num_posits
+
     def forward(self, source_embed, source_embed2, token_index=None, source_pad_mask=None, target_pad_mask=None, max_len=300, top_k=1, bos_id=1, pad_id=3, mode='eye'):
         if token_index != None:
             posit_index = torch.arange(token_index.shape[1]).unsqueeze(0).repeat(token_index.shape[0],1).to(token_index.device)
@@ -239,16 +240,14 @@ class Generator(nn.Module):
 
             for i in range(len(self.transform)):
                 final_embed = self.transform[i](final_embed, source_embed2, pad_mask, cross_pad_mask, att_mask)[0]
-            token_index = torch.arange(self.num_tokens).unsqueeze(0).repeat(token_index.shape[0],1).to(token_index.device)
-            token_embed = self.token_embedding(token_index)
-            emb, att = self.attention(token_embed,final_embed)
-            emb = emb[:,source_embed.shape[1]:,:]
-            att = att[:,source_embed.shape[1]:,:]
-            return att, emb
+            target_hidden = final_embed[:, source_embed.shape[1]:, :]
+            logits = self.output_layer(target_hidden)
+            probs = torch.softmax(logits, dim=-1)
+            return probs, target_hidden
         else:
             return self.infer(source_embed, source_embed2, source_pad_mask, max_len, top_k, bos_id, pad_id)
 
-        def infer(self, source_embed, source_pad_mask=None, max_len=100, top_k=1, bos_id=1, pad_id=3):
+    def infer(self, source_embed, source_embed2, source_pad_mask=None, max_len=100, top_k=1, bos_id=1, pad_id=3):
         outputs = torch.ones((top_k, source_embed.shape[0], 1), dtype=torch.long).to(source_embed.device) * bos_id # (K,B,1) <s>
         scores = torch.zeros((top_k, source_embed.shape[0]), dtype=torch.float32).to(source_embed.device) # (K,B)
 
@@ -260,9 +259,15 @@ class Generator(nn.Module):
                 output = outputs[k] # (B,L)
                 score = scores[k] # (B)
                 
-                att, emb = self.forward(source_embed, output, source_pad_mask=source_pad_mask, target_pad_mask=(output == pad_id))
-                val, idx = torch.topk(att[:,-1,:], top_k) # (B,K)
-                log_val = -torch.log(val) # (B,K)
+                probs, _ = self.forward(
+                    source_embed,
+                    source_embed2,
+                    token_index=output,
+                    source_pad_mask=source_pad_mask,
+                    target_pad_mask=(output == pad_id),
+                )
+                val, idx = torch.topk(probs[:, -1, :], top_k) # (B,K)
+                log_val = -torch.log(val.clamp_min(1e-12)) # (B,K)
                 
                 for i in range(top_k):
                     new_output = torch.cat([output, idx[:,i].view(-1,1)], dim=-1) # (B,L+1)
