@@ -32,7 +32,7 @@
 进入项目后先确认基础环境：
 
 ```bash
-cd /root/autodl-tmp/Context-Enhanced-framework
+cd /root/autodl-tmp/Context-Enhanced-Framework
 python --version
 python -c "import torch, torchvision; print(torch.__version__); print(torchvision.__version__); print(torch.cuda.is_available())"
 nvidia-smi
@@ -50,7 +50,7 @@ nvidia-smi
 如果默认镜像里缺少依赖，先补齐主模型所需包：
 
 ```bash
-cd /root/autodl-tmp/Context-Enhanced-framework
+cd /root/autodl-tmp/Context-Enhanced-Framework
 pip install pandas pillow sentencepiece scikit-learn tqdm
 ```
 
@@ -62,7 +62,7 @@ pip install pandas pillow sentencepiece scikit-learn tqdm
 ### 5.1 推荐训练命令
 
 ```bash
-cd /root/autodl-tmp/Context-Enhanced-framework
+cd /root/autodl-tmp/Context-Enhanced-Framework
 
 python run_indiana_raw.py \
   --phase train \
@@ -86,6 +86,17 @@ python run_indiana_raw.py \
 - 自动把划分结果写到输出目录下的 `indiana_raw_splits.json`
 - 训练模型并保存最佳 checkpoint
 - 训练结束后直接在测试集上生成报告并计算指标
+
+{
+  "metrics": {
+    "bleu_1": 0.466349,
+    "bleu_2": 0.321742,
+    "bleu_3": 0.236082,
+    "bleu_4": 0.180148,
+    "rouge_l": 0.376356
+  },
+  "qwen_metrics": null
+}
 
 ### 5.2 如果服务器无法联网下载 DenseNet 预训练权重
 
@@ -188,7 +199,7 @@ pip install transformers accelerate sentencepiece
 那么可以在项目目录里执行：
 
 ```bash
-cd /root/autodl-tmp/Context-Enhanced-framework
+cd /root/autodl-tmp/Context-Enhanced-Framework
 
 python run_indiana_raw.py \
   --phase infer \
