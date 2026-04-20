@@ -1,3 +1,9 @@
+import re
+
+
+_METRIC_PUNCTUATION = re.compile(r"([.,;:!?()])")
+
+
 def build_qwen_rewrite_prompt(history, draft):
     history = history or ""
     draft = draft or ""
@@ -12,6 +18,20 @@ def build_qwen_rewrite_prompt(history, draft):
         f"Draft findings:\n{draft}\n\n"
         "Return only the revised findings text."
     )
+
+
+def normalize_report_text_for_metrics(text):
+    normalized = str(text or "").strip().lower()
+    normalized = _METRIC_PUNCTUATION.sub(r" \1 ", normalized)
+    return " ".join(normalized.split())
+
+
+def build_qwen_output_record(record, revised_text):
+    final_text = (revised_text or "").strip() or record.get("hypothesis", "")
+    updated_record = dict(record)
+    updated_record["qwen_hypothesis"] = final_text
+    updated_record["qwen_hypothesis_normalized"] = normalize_report_text_for_metrics(final_text)
+    return updated_record
 
 
 def _load_transformers():
@@ -63,8 +83,7 @@ def rewrite_reports_with_qwen(
         )
         new_tokens = generated[:, input_ids.shape[-1] :]
         revised_text = tokenizer.batch_decode(new_tokens, skip_special_tokens=True)[0].strip()
-        updated_record = dict(record)
-        updated_record["qwen_hypothesis"] = revised_text or record.get("hypothesis", "")
+        updated_record = build_qwen_output_record(record, revised_text)
         updated_record["qwen_prompt"] = prompt
         rewritten_records.append(updated_record)
     return rewritten_records

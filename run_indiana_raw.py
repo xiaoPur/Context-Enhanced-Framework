@@ -305,7 +305,7 @@ def maybe_run_qwen(records, output_dir, args):
         temperature=args.qwen_temperature,
     )
     references = [record["reference"] for record in qwen_records]
-    hypotheses = [record["qwen_hypothesis"] for record in qwen_records]
+    hypotheses = [record["qwen_hypothesis_normalized"] for record in qwen_records]
     metrics = compute_report_metrics(references, hypotheses)
     write_report_outputs(output_dir, references, hypotheses, metrics, qwen_records, prefix="qwen")
     return metrics

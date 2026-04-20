@@ -87,6 +87,8 @@ python run_indiana_raw.py \
 - 训练模型并保存最佳 checkpoint
 - 训练结束后直接在测试集上生成报告并计算指标
 
+标准评估输出示例：
+
 {
   "metrics": {
     "bleu_1": 0.466349,
@@ -97,6 +99,24 @@ python run_indiana_raw.py \
   },
   "qwen_metrics": null
 }
+
+旧版 Qwen 评估在“直接拿自然语言改写结果做 BLEU/ROUGE”时，可能出现类似下面的异常低分：
+
+{
+  "bleu_1": 0.233936,
+  "bleu_2": 0.135649,
+  "bleu_3": 0.081519,
+  "bleu_4": 0.0513,
+  "rouge_l": 0.209822
+}
+
+当前版本已经在 Qwen 评估前自动做规范化处理：
+
+- 转为小写
+- 将常见标点拆成独立 token
+- 压缩多余空白
+
+因此新的 `qwen_metrics.json` 是基于规范化后的 Qwen 文本计算，通常不应再把上面这组旧低分当作当前实现的真实性能结论。
 
 ### 5.2 如果服务器无法联网下载 DenseNet 预训练权重
 
@@ -219,6 +239,12 @@ python run_indiana_raw.py \
 - `qwen_metrics.json`
 - `qwen_predictions.jsonl`
 
+其中：
+
+- `qwen_hypotheses.txt`：规范化后的 Qwen 文本，用于 BLEU / ROUGE 评测
+- `qwen_metrics.json`：基于规范化后文本计算出的指标
+- `qwen_predictions.jsonl`：保留逐条样本的原始 `qwen_hypothesis`，同时附带 `qwen_hypothesis_normalized`
+
 ## 10. 本地 Windows 阶段已经做过的验证
 
 这次改造在本地无真实数据条件下已经做过：
@@ -275,6 +301,12 @@ pip install pandas pillow sentencepiece scikit-learn tqdm
 - 图像文件名是否和 `indiana_projections.csv` 对得上
 - `uid` 是否和旧标签文件映射成功
 - 是否用到了预训练 DenseNet 权重
+
+如果是 `qwen_metrics.json` 明显异常偏低，再额外检查：
+
+- 是否还在使用旧版代码，旧版会把自然语言格式的 Qwen 输出直接拿去算 BLEU / ROUGE
+- `qwen_predictions.jsonl` 里的 `qwen_hypothesis` 和 `qwen_hypothesis_normalized` 是否都已正常输出
+- 是否误把 `qwen_hypothesis` 的原始自然语言文本当成了评测输入
 
 ## 12. 最小执行顺序
 

@@ -1,0 +1,84 @@
+(medvill) root@autodl-container-4eba4c9c6f-66e322f3:~/autodl-tmp/MedViLL# python downstream_task/report_generation_and_vqa/generation_decode.py   --repo_root /root/autodl-tmp/MedViLL   --generation_dataset openi   --bert_model /root/autodl-tmp/models/bert-base-uncased   --model_recover_path /root/autodl-tmp/MedViLL/outputs/report_generation/openi/model.50.bin   --beam_size 1
+Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex.
+ # PID : 7327
+04/15/2026 13:31:51 - INFO - __main__ -   ***** Recover model: /root/autodl-tmp/MedViLL/outputs/report_generation/openi/model.50.bin *****
+04/15/2026 13:31:51 - INFO - pytorch_pretrained_bert.model -   loading archive file /root/autodl-tmp/models/bert-base-uncased
+04/15/2026 13:31:51 - INFO - pytorch_pretrained_bert.model -   Model config {
+  "_name_or_path": "/home/mimic-cxr/model/base_img180_txt253_PAR20210124_103230/29",
+  "architectures": [
+    "CXRBERT"
+  ],
+  "attention_probs_dropout_prob": 0.1,
+  "fp32_embedding": false,
+  "gradient_checkpointing": false,
+  "hidden_act": "gelu",
+  "hidden_dropout_prob": 0.1,
+  "hidden_size": 768,
+  "initializer_range": 0.02,
+  "intermediate_size": 3072,
+  "label_smoothing": null,
+  "layer_norm_eps": 1e-12,
+  "max_position_embeddings": 512,
+  "model_type": "bert",
+  "num_attention_heads": 12,
+  "num_hidden_layers": 12,
+  "pad_token_id": 0,
+  "relax_projection": 0,
+  "task_idx": 3,
+  "type_vocab_size": 2,
+  "vocab_size": 30522
+}
+
+OpenI data load
+start the caption evaluation...
+100%|████████████████████████████████████████████████████████████████████████████| 354/354 [22:15<00:00,  3.80s/it]1335.0812377929688
+100%|████████████████████████████████████████████████████████████████████████████| 354/354 [22:15<00:00,  3.77s/it]
+avg ppl:  4.7309771119538
+downstream_task/report_generation_and_vqa/generation_decode.py:39: UserWarning: Falling back to local BLEU evaluation because bleu.py could not be imported: No module named 'chexpert_labeler.loader'
+  warnings.warn(
+100%|█████████████████████████████████████████████████████████████████████████| 354/354 [00:00<00:00, 49486.19it/s]
+1-Gram BLEU: 0.23
+2-Gram BLEU: 0.16
+3-Gram BLEU: 0.11
+4-Gram BLEU: 0.08
+results_dict defaultdict(<class 'list'>, {'bleu1': [0.2302211824755423], 'bleu2': [0.1575555166398683], 'bleu3': [0.11258218855061926], 'bleu4': [0.07878960773161373], 'ppl': [4.7309771119538], 'accuracy': [nan], 'precision': [nan], 'recall': [nan], 'f1': [nan]})
+04/15/2026 13:54:13 - INFO - __main__ -   ***** Recover model: /root/autodl-tmp/MedViLL/outputs/report_generation/openi/model.50.bin *****
+04/15/2026 13:54:14 - INFO - pytorch_pretrained_bert.model -   loading archive file /root/autodl-tmp/models/bert-base-uncased
+04/15/2026 13:54:14 - INFO - pytorch_pretrained_bert.model -   Model config {
+  "_name_or_path": "/home/mimic-cxr/model/base_img180_txt253_PAR20210124_103230/29",
+  "architectures": [
+    "CXRBERT"
+  ],
+  "attention_probs_dropout_prob": 0.1,
+  "fp32_embedding": false,
+  "gradient_checkpointing": false,
+  "hidden_act": "gelu",
+  "hidden_dropout_prob": 0.1,
+  "hidden_size": 768,
+  "initializer_range": 0.02,
+  "intermediate_size": 3072,
+  "label_smoothing": null,
+  "layer_norm_eps": 1e-12,
+  "max_position_embeddings": 512,
+  "model_type": "bert",
+  "num_attention_heads": 12,
+  "num_hidden_layers": 12,
+  "pad_token_id": 0,
+  "relax_projection": 0,
+  "task_idx": 3,
+  "type_vocab_size": 2,
+  "vocab_size": 30522
+}
+
+OpenI data load
+start the caption evaluation...
+100%|████████████████████████████████████████████████████████████████████████████| 354/354 [21:58<00:00,  3.72s/it]1318.0176548957825
+100%|████████████████████████████████████████████████████████████████████████████| 354/354 [21:58<00:00,  3.72s/it]
+avg ppl:  4.786202274473373
+100%|█████████████████████████████████████████████████████████████████████████| 354/354 [00:00<00:00, 45661.77it/s]
+1-Gram BLEU: 0.23
+2-Gram BLEU: 0.16
+3-Gram BLEU: 0.11
+4-Gram BLEU: 0.08
+results_dict defaultdict(<class 'list'>, {'bleu1': [0.2302211824755423, 0.22754619681993984], 'bleu2': [0.1575555166398683, 0.15690903803771944], 'bleu3': [0.11258218855061926, 0.11077421107550464], 'bleu4': [0.07878960773161373, 0.07582904839067035], 'ppl': [4.7309771119538, 4.786202274473373], 'accuracy': [nan, nan], 'precision': [nan, nan], 'recall': [nan, nan], 'f1': [nan, nan]})
+04/15/2026 14:16:17 - INFO - wandb.sdk.internal.internal -   Internal process exited

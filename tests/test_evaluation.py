@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 
 from evaluation import compute_report_metrics, write_report_outputs
+from qwen_postprocess import normalize_report_text_for_metrics
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_TMP_ROOT = REPO_ROOT / ".tmp_tests"
@@ -38,6 +39,18 @@ class EvaluationTests(unittest.TestCase):
         self.assertTrue((output_dir / "hypotheses.txt").exists())
         self.assertTrue((output_dir / "metrics.json").exists())
         self.assertTrue((output_dir / "predictions.jsonl").exists())
+
+    def test_normalized_qwen_text_restores_metric_alignment(self):
+        references = ["lungs are clear . no pleural effusion ."]
+        raw_qwen_hypotheses = ["Lungs are clear. No pleural effusion."]
+        normalized_qwen_hypotheses = [normalize_report_text_for_metrics(raw_qwen_hypotheses[0])]
+
+        raw_metrics = compute_report_metrics(references, raw_qwen_hypotheses)
+        normalized_metrics = compute_report_metrics(references, normalized_qwen_hypotheses)
+
+        self.assertLess(raw_metrics["bleu_4"], 1.0)
+        self.assertEqual(normalized_metrics["bleu_4"], 1.0)
+        self.assertEqual(normalized_metrics["rouge_l"], 1.0)
 
 
 if __name__ == "__main__":
