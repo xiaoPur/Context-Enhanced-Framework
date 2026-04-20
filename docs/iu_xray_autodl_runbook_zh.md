@@ -118,6 +118,25 @@ python run_indiana_raw.py \
 
 因此新的 `qwen_metrics.json` 是基于规范化后的 Qwen 文本计算，通常不应再把上面这组旧低分当作当前实现的真实性能结论。
 
+{
+  "metrics": {
+    "bleu_1": 0.466462,
+    "bleu_2": 0.321905,
+    "bleu_3": 0.236257,
+    "bleu_4": 0.180294,
+    "rouge_l": 0.376459
+  },
+  "qwen_metrics": {
+    "bleu_1": 0.455186,
+    "bleu_2": 0.306694,
+    "bleu_3": 0.220641,
+    "bleu_4": 0.165368,
+    "rouge_l": 0.376438
+  }
+}
+
+
+
 ### 5.2 如果服务器无法联网下载 DenseNet 预训练权重
 
 去掉 `--pretrained-backbone`，先确认流程可跑通：
