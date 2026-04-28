@@ -14,8 +14,11 @@ class QwenPromptTests(unittest.TestCase):
             draft="lungs are clear .",
         )
 
-        self.assertIn("Only revise the report text", prompt)
+        self.assertIn("smallest possible edits", prompt)
+        self.assertIn("If the draft is understandable, return it unchanged", prompt)
+        self.assertIn("Do not paraphrase normal findings or replace terms with synonyms", prompt)
         self.assertIn("Do not introduce new findings", prompt)
+        self.assertIn("Preserve all xxxx placeholders exactly", prompt)
         self.assertIn("cough . no prior study .", prompt)
         self.assertIn("lungs are clear .", prompt)
 
