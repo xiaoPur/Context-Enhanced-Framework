@@ -105,6 +105,8 @@ Qwen 后处理评估对应命令中的 `--run-qwen-eval`。
 
 Qwen 的角色是报告后处理编辑器：它对主模型生成的草稿做语言层面的整理和改写。它不参与主模型训练，也不直接看图。
 
+从本次 `qwen_predictions.jsonl` 保存的 `qwen_prompt` 看，本次 artifacts 对应的是旧版“报告编辑器”提示词。该提示词强调保持临床忠实、不要引入新发现、不要删除非冗余发现，并要求输出简洁报告文本。因此这组结果应解释为“旧版 Qwen 润色型提示词”的评估结果，而不是后续更保守的“最小修改型提示词”的结果。
+
 Qwen 评估流程是：
 
 1. 先完成标准主模型推理，得到每条样本的 `reference`、`hypothesis`、`history`。
@@ -132,9 +134,9 @@ Qwen 评估流程是：
 
 ## 6. 为什么 Qwen 结果是混合变化
 
-当前 Qwen 后处理并没有带来所有指标的同步提升，这符合它的使用方式。
+当前 Qwen 后处理并没有带来所有指标的同步提升，这符合本次旧版润色型提示词的使用方式。
 
-Qwen 做的是文本改写，因此它可能：
+旧版提示词鼓励 Qwen 做一定程度的文本整理和简化，因此它可能：
 
 1. 将局部词语变得更自然，使 `BLEU-1` 上升。
 2. 改变短语顺序或句式，使高阶 BLEU 下降。
@@ -142,7 +144,7 @@ Qwen 做的是文本改写，因此它可能：
 4. 改写部分医学表达，使 `METEOR` 的匹配收益下降。
 5. 保留或强化某些关键 n-gram，使 `CIDEr` 上升。
 
-因此，当前结果更适合解释为“语言后处理带来的指标结构变化”，而不是“Qwen 作为新模型显著提升生成质量”。
+因此，当前结果更适合解释为“润色型语言后处理带来的指标结构变化”，而不是“Qwen 作为新模型显著提升生成质量”。
 
 ## 7. 可用于汇报的结论
 
@@ -166,7 +168,7 @@ Qwen 做的是文本改写，因此它可能：
 
 ## 8. 当前实现与论文式增强的边界
 
-当前代码中的 Qwen 使用方式仍然偏保守：
+本次 artifacts 对应的 Qwen 使用方式仍然是后处理式的：
 
 1. Qwen 只接收 `history + hypothesis`。
 2. Qwen 不直接看 X-Ray 图像。
@@ -174,7 +176,9 @@ Qwen 做的是文本改写，因此它可能：
 4. Qwen 没有显式使用 `predicted_topics`。
 5. Qwen 不参与端到端训练。
 
-因此，当前实现更接近 report polishing，而不是 diagnosis-guided generation enhancement。
+因此，本次实验更接近 report polishing，而不是 diagnosis-guided generation enhancement。
+
+另外，代码后续可以使用更保守的“最小修改型”提示词重新跑一轮 Qwen 评估。那一轮如果重新生成 artifacts，需要单独记录为新的实验结果，不能和本报告中的旧版 prompt 结果混在一起比较。
 
 如果后续要进一步贴近“大模型增强”表述，可以考虑：
 
@@ -216,3 +220,4 @@ python run_indiana_raw.py \
 1. 使用 `reference` 与 `hypothesis` 计算标准评估。
 2. 使用 `reference` 与 `qwen_hypothesis_normalized` 计算 Qwen 后处理评估。
 3. METEOR / CIDEr 通过 `--include-paper-metrics` 启用。
+4. 本次 Qwen 结果对应 `qwen_predictions.jsonl` 中保存的旧版润色型 prompt；若换成最小修改型 prompt，需要重新跑并另行记录。
