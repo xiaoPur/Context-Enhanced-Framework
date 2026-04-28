@@ -1,65 +1,88 @@
-# IU X-Ray 原始数据复现与 AutoDL 执行说明
+# IU X-Ray AutoDL 运行手册
 
-## 1. 适用范围
+这份手册只说明服务器上怎么跑，以及每一步命令对应到代码里做了什么。默认入口是 `run_indiana_raw.py`，不要再用旧的 `train.py`。
 
-这份说明对应当前仓库里的新入口脚本 `run_indiana_raw.py`。  
-原始的 `train.py` 仍然保留在仓库中，但它是旧版硬编码入口，不建议再用于这次 Indiana 原始 CSV 复现。
+## 1. 目录准备
 
-当前改造支持的主流程是：
+建议服务器目录保持一致：
 
-1. 直接读取原始 `images_normalized + indiana_projections.csv + indiana_reports.csv`
-2. 使用 `findings` 作为生成目标
-3. 优先复用仓库内置的 `iu_xray/file2label.json`
-4. 训练完成后自动输出 `BLEU-1/2/3/4` 和 `ROUGE-L`
-5. 可选用本地 `Qwen2.5-7B-Instruct` 对生成结果做后处理再评估
+```text
+/root/autodl-tmp/Context-Enhanced-Framework/
+/root/autodl-tmp/IU x-ray/
+/root/autodl-tmp/IU x-ray/images_normalized/
+/root/autodl-tmp/IU x-ray/indiana_reports.csv
+/root/autodl-tmp/IU x-ray/indiana_projections.csv
+```
 
-## 2. 服务器目录约定
+训练和评估输出建议放到：
 
-你给出的目录结构可以直接使用：
+```text
+/root/autodl-tmp/Context-Enhanced-Framework/artifacts/iu_xray_raw/
+```
 
-- 项目目录：`/root/autodl-tmp/Context-Enhanced-framework/`
-- 数据目录：`/root/autodl-tmp/IU x-ray/`
-- 图像目录：`/root/autodl-tmp/IU x-ray/images_normalized/`
-- 报告 CSV：`/root/autodl-tmp/IU x-ray/indiana_reports.csv`
-- 投影 CSV：`/root/autodl-tmp/IU x-ray/indiana_projections.csv`
+对应代码：
 
-建议把训练输出单独放在项目目录下，例如：
+- `run_indiana_raw.py::parse_args()` 读取 `--data-root`、`--output-dir`、CSV 文件名和图像目录参数。
+- `datasets.py::IndianaRawIUXRAY` 从 `indiana_reports.csv` 读取 `findings`，从 `indiana_projections.csv` 找图像文件。
+- `run_indiana_raw.py::build_dataset_triplet()` 创建 train / val / test 三个数据集。
 
-- 输出目录：`/root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw/`
+## 2. 安装主模型依赖
 
-## 3. 默认镜像环境检查
-
-进入项目后先确认基础环境：
+进入项目目录：
 
 ```bash
 cd /root/autodl-tmp/Context-Enhanced-Framework
+```
+
+检查基础环境：
+
+```bash
 python --version
 python -c "import torch, torchvision; print(torch.__version__); print(torchvision.__version__); print(torch.cuda.is_available())"
 nvidia-smi
 ```
 
-建议在你当前 AutoDL 镜像里至少确认下面几项：
-
-- Python 3.8
-- PyTorch 1.7.x
-- torchvision 0.8.x 左右
-- CUDA 可用
-
-## 4. 主模型依赖安装
-
-如果默认镜像里缺少依赖，先补齐主模型所需包：
+安装主模型依赖：
 
 ```bash
-cd /root/autodl-tmp/Context-Enhanced-Framework
 pip install pandas pillow sentencepiece scikit-learn tqdm
 ```
 
-如果 `torchvision` 不可用，再补安装与当前 PyTorch 对应版本的 `torchvision`。  
-如果镜像里已经自带，就不要重复升级，避免破坏默认 PyTorch 1.7 环境。
+对应代码：
 
-## 5. 训练命令
+- `datasets.py` 依赖 `pandas` 读取 Indiana CSV。
+- `datasets.py` 依赖 `Pillow` 读取 X-Ray 图像。
+- `datasets.py` 依赖 `sentencepiece` 编码和解码报告文本。
+- `run_indiana_raw.py::build_model()` 使用 `torch`、`torchvision.models.densenet121` 构建主模型。
 
-### 5.1 推荐训练命令
+如果 `torchvision` 已经随镜像安装，不要随便升级 PyTorch / torchvision，避免破坏服务器镜像环境。
+
+## 3. 可选：安装 METEOR / CIDEr 评估依赖
+
+只有当命令里使用 `--include-paper-metrics` 时，才需要这一节。
+
+```bash
+java -version
+pip install pycocoevalcap nltk
+python -c "from pycocoevalcap.meteor.meteor import Meteor; from pycocoevalcap.cider.cider import Cider; print('paper metrics ok')"
+```
+
+如果 `java -version` 不可用，并且服务器有 apt 权限：
+
+```bash
+apt-get update && apt-get install -y default-jre
+```
+
+对应代码：
+
+- `run_indiana_raw.py::parse_args()` 读取 `--include-paper-metrics`。
+- `evaluation.py::compute_report_metrics()` 在 `include_paper_metrics=True` 时追加论文指标。
+- `evaluation.py::compute_paper_metrics()` 调用 `pycocoevalcap` 的 `Meteor` 和 `Cider`。
+- 如果依赖没装却打开 `--include-paper-metrics`，代码会直接报错提醒安装服务器端评估依赖。
+
+## 4. 训练并自动评估
+
+推荐训练命令：
 
 ```bash
 cd /root/autodl-tmp/Context-Enhanced-Framework
@@ -68,7 +91,7 @@ python run_indiana_raw.py \
   --phase train \
   --dataset-name indiana_raw \
   --data-root "/root/autodl-tmp/IU x-ray" \
-  --output-dir "/root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw" \
+  --output-dir "/root/autodl-tmp/Context-Enhanced-Framework/artifacts/iu_xray_raw" \
   --reports-csv indiana_reports.csv \
   --projections-csv indiana_projections.csv \
   --images-dir images_normalized \
@@ -80,143 +103,106 @@ python run_indiana_raw.py \
   --run-eval
 ```
 
-这条命令会做几件事：
-
-- 按 `uid` 构建 train / val / test 划分
-- 自动把划分结果写到输出目录下的 `indiana_raw_splits.json`
-- 训练模型并保存最佳 checkpoint
-- 训练结束后直接在测试集上生成报告并计算指标
-
-标准评估输出示例：
-
-{
-  "metrics": {
-    "bleu_1": 0.466349,
-    "bleu_2": 0.321742,
-    "bleu_3": 0.236082,
-    "bleu_4": 0.180148,
-    "rouge_l": 0.376356
-  },
-  "qwen_metrics": null
-}
-
-旧版 Qwen 评估在“直接拿自然语言改写结果做 BLEU/ROUGE”时，可能出现类似下面的异常低分：
-
-{
-  "bleu_1": 0.233936,
-  "bleu_2": 0.135649,
-  "bleu_3": 0.081519,
-  "bleu_4": 0.0513,
-  "rouge_l": 0.209822
-}
-
-当前版本已经在 Qwen 评估前自动做规范化处理：
-
-- 转为小写
-- 将常见标点拆成独立 token
-- 压缩多余空白
-
-因此新的 `qwen_metrics.json` 是基于规范化后的 Qwen 文本计算，通常不应再把上面这组旧低分当作当前实现的真实性能结论。
-
-{
-  "metrics": {
-    "bleu_1": 0.466462,
-    "bleu_2": 0.321905,
-    "bleu_3": 0.236257,
-    "bleu_4": 0.180294,
-    "rouge_l": 0.376459
-  },
-  "qwen_metrics": {
-    "bleu_1": 0.455186,
-    "bleu_2": 0.306694,
-    "bleu_3": 0.220641,
-    "bleu_4": 0.165368,
-    "rouge_l": 0.376438
-  }
-}
-
-
-
-### 5.2 如果服务器无法联网下载 DenseNet 预训练权重
-
-去掉 `--pretrained-backbone`，先确认流程可跑通：
+如果已经安装好 METEOR / CIDEr 依赖，并希望训练结束后一起输出论文指标，在末尾加：
 
 ```bash
-python run_indiana_raw.py \
-  --phase train \
-  --dataset-name indiana_raw \
-  --data-root "/root/autodl-tmp/IU x-ray" \
-  --output-dir "/root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw" \
-  --batch-size 8 \
-  --eval-batch-size 32 \
-  --epochs 50 \
-  --num-workers 8 \
-  --run-eval
+  --include-paper-metrics
 ```
 
-这会偏离论文设置，但能先验证训练链路是否通畅。
+这一步对应代码：
 
-## 6. 只做推理与标准评估
+- `main()` 调用 `seed_everything()` 固定随机种子。
+- `build_dataset_triplet()` 创建 train / val / test 数据集，并把划分写入 `indiana_raw_splits.json`。
+- `build_dataloaders()` 创建 PyTorch dataloader。
+- `build_model()` 创建 DenseNet121 + MVCNN + TNN + Classifier + Generator + Context。
+- `utils.py::train()` 执行训练。
+- `utils.py::test()` 在 val / test 上计算 loss。
+- `utils.py::save()` 保存验证集 loss 最低的 checkpoint。
+- 因为命令带了 `--run-eval`，训练结束后会进入 `run_evaluation()`。
+- `run_evaluation()` 调用 `evaluate_generation()` 生成报告，再调用 `write_report_outputs()` 写出结果。
 
-如果你已经训练好了 checkpoint，可以单独做推理与指标计算：
+训练输出重点看：
+
+```text
+artifacts/iu_xray_raw/checkpoints/
+artifacts/iu_xray_raw/indiana_raw_splits.json
+artifacts/iu_xray_raw/metrics.json
+artifacts/iu_xray_raw/predictions.jsonl
+artifacts/iu_xray_raw/references.txt
+artifacts/iu_xray_raw/hypotheses.txt
+```
+
+`metrics.json` 默认包含：
+
+```json
+{
+  "bleu_1": 0.0,
+  "bleu_2": 0.0,
+  "bleu_3": 0.0,
+  "bleu_4": 0.0,
+  "rouge_l": 0.0
+}
+```
+
+如果加了 `--include-paper-metrics`，还会包含：
+
+```json
+{
+  "meteor": 0.0,
+  "cider": 0.0
+}
+```
+
+## 5. 只用已有 checkpoint 重新评估
+
+如果模型已经训练好，只想重新生成报告和指标：
 
 ```bash
-cd /root/autodl-tmp/Context-Enhanced-framework
+cd /root/autodl-tmp/Context-Enhanced-Framework
 
 python run_indiana_raw.py \
   --phase infer \
   --dataset-name indiana_raw \
   --data-root "/root/autodl-tmp/IU x-ray" \
-  --output-dir "/root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw" \
-  --checkpoint-path "/root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw/checkpoints/indiana_raw_Context_DenseNet121_MaxView2_NumLabel114_History.pt" \
+  --output-dir "/root/autodl-tmp/Context-Enhanced-Framework/artifacts/iu_xray_raw" \
+  --checkpoint-path "/root/autodl-tmp/Context-Enhanced-Framework/artifacts/iu_xray_raw/checkpoints/indiana_raw_Context_DenseNet121_MaxView2_NumLabel114_History.pt" \
   --num-workers 8 \
   --run-eval
 ```
 
-## 7. 标准评估输出文件
+如果要算 METEOR / CIDEr：
 
-执行 `--run-eval` 后，输出目录里会有：
+```bash
+  --include-paper-metrics
+```
 
-- `references.txt`
-- `hypotheses.txt`
-- `metrics.json`
-- `predictions.jsonl`
-- `indiana_raw_splits.json`
+这一步对应代码：
 
-其中 `metrics.json` 至少包含：
+- `main()` 在 `--phase infer` 下通过 `utils.py::load()` 加载 checkpoint。
+- `run_evaluation()` 进入评估流程。
+- `evaluate_generation()` 对 test set 逐 batch 生成 `hypothesis`。
+- `decode_sequence()` 把 token id 解码成文本。
+- `evaluation.py::compute_report_metrics()` 用 `reference` 和 `hypothesis` 计算 BLEU / ROUGE-L。
+- 如果打开 `--include-paper-metrics`，同一个 `reference` / `hypothesis` 会继续送入 `compute_paper_metrics()` 计算 METEOR / CIDEr。
+- `write_report_outputs()` 写出 `metrics.json`、`predictions.jsonl`、`references.txt`、`hypotheses.txt`。
 
-- `bleu_1`
-- `bleu_2`
-- `bleu_3`
-- `bleu_4`
-- `rouge_l`
+`predictions.jsonl` 每行主要字段：
 
-## 8. 标签文件说明
+```json
+{
+  "uid": "2",
+  "history": "...",
+  "reference": "...",
+  "hypothesis": "...",
+  "predicted_topics": []
+}
+```
 
-当前默认策略是：
+## 6. Qwen 后处理评估
 
-- 优先使用仓库自带的 `iu_xray/file2label.json`
-- key 映射规则为 `ecgen-radiology/{uid}.xml`
-- 如果某个 `uid` 在旧标签文件中找不到，对应 14 维疾病标签会补零
+Qwen 后处理不是重新训练，也不是让 Qwen 看图。它只读取主模型已经生成的 `hypothesis`，再结合 `history` 做文本改写。
 
-这意味着：
-
-- 如果你的原始 Indiana 数据与仓库自带 IU X-Ray 版本高度一致，通常可以直接跑
-- 如果后续你补齐了外部标签文件，可以通过 `--external-label-file` 重新指定
-
-## 9. Qwen2.5-7B-Instruct 后处理评估
-
-### 9.1 先说明一个现实限制
-
-主模型复现建议继续使用默认镜像里的 PyTorch 1.7 环境。  
-Qwen2.5-7B-Instruct 更适合在单独的 Python 环境中安装 `transformers` 生态，而不是直接污染主复现环境。
-
-也就是说：
-
-- 主模型训练/评估：继续用默认镜像环境
-- Qwen 后处理：建议单独建一个虚拟环境
-
-### 9.2 创建可选的 Qwen 虚拟环境
+先准备 Qwen 环境。建议单独建环境，避免污染主模型 PyTorch 1.7 环境：
 
 ```bash
 cd /root/autodl-tmp
@@ -226,16 +212,13 @@ pip install --upgrade pip
 pip install transformers accelerate sentencepiece
 ```
 
-如果你打算在这个虚拟环境里直接跑 GPU 推理，需要再根据 AutoDL 当前驱动/CUDA 情况安装与你机器兼容的 PyTorch 版本。  
-这一步不要覆盖主项目默认环境，尽量保持隔离。
+假设 Qwen 模型目录是：
 
-### 9.3 Qwen 后处理评估命令
+```text
+/root/autodl-tmp/models/Qwen2.5-7B-Instruct/
+```
 
-假设你已经把 `Qwen2.5-7B-Instruct` 下载到本地目录：
-
-- `Qwen` 模型目录：`/root/autodl-tmp/models/Qwen2.5-7B-Instruct/`
-
-那么可以在项目目录里执行：
+运行：
 
 ```bash
 cd /root/autodl-tmp/Context-Enhanced-Framework
@@ -244,96 +227,98 @@ python run_indiana_raw.py \
   --phase infer \
   --dataset-name indiana_raw \
   --data-root "/root/autodl-tmp/IU x-ray" \
-  --output-dir "/root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw" \
-  --checkpoint-path "/root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw/checkpoints/indiana_raw_Context_DenseNet121_MaxView2_NumLabel114_History.pt" \
+  --output-dir "/root/autodl-tmp/Context-Enhanced-Framework/artifacts/iu_xray_raw" \
+  --checkpoint-path "/root/autodl-tmp/Context-Enhanced-Framework/artifacts/iu_xray_raw/checkpoints/indiana_raw_Context_DenseNet121_MaxView2_NumLabel114_History.pt" \
   --num-workers 8 \
   --run-eval \
   --run-qwen-eval \
   --qwen-model-path "/root/autodl-tmp/models/Qwen2.5-7B-Instruct"
 ```
 
-执行成功后会额外生成：
-
-- `qwen_hypotheses.txt`
-- `qwen_metrics.json`
-- `qwen_predictions.jsonl`
-
-其中：
-
-- `qwen_hypotheses.txt`：规范化后的 Qwen 文本，用于 BLEU / ROUGE 评测
-- `qwen_metrics.json`：基于规范化后文本计算出的指标
-- `qwen_predictions.jsonl`：保留逐条样本的原始 `qwen_hypothesis`，同时附带 `qwen_hypothesis_normalized`
-
-## 10. 本地 Windows 阶段已经做过的验证
-
-这次改造在本地无真实数据条件下已经做过：
-
-- 原始 Indiana CSV 适配 mock 测试
-- BLEU / ROUGE 指标函数测试
-- Qwen prompt 构造测试
-- `run_indiana_raw.py --help`
-- 关键 Python 文件语法编译检查
-
-还没有做的事情：
-
-- 真实训练
-- 真实 checkpoint 生成
-- 真实 IU X-Ray 指标复现
-- 真实 Qwen GPU 推理
-
-这些都需要你上传到服务器后执行。
-
-## 11. 常见问题排查
-
-### 11.1 `checkpoint not found`
-
-说明你在 `--phase infer` 时指定的 checkpoint 路径不对。  
-先到输出目录确认：
+如果也要给 Qwen 后处理结果计算 METEOR / CIDEr，并且第 3 节依赖已经装好，加：
 
 ```bash
-ls /root/autodl-tmp/Context-Enhanced-framework/artifacts/iu_xray_raw/checkpoints
+  --include-paper-metrics
 ```
 
-### 11.2 `No module named sentencepiece` / `pandas` / `sklearn`
+这一步对应代码：
 
-补安装主模型依赖：
+- `run_evaluation()` 先完成普通主模型评估，得到 `records`。
+- `maybe_run_qwen()` 检查 `--run-qwen-eval` 和 `--qwen-model-path`。
+- `qwen_postprocess.py::rewrite_reports_with_qwen()` 加载 Qwen，逐条改写 `hypothesis`。
+- `qwen_postprocess.py::build_qwen_output_record()` 保存原始 `qwen_hypothesis`，并生成 `qwen_hypothesis_normalized`。
+- `maybe_run_qwen()` 使用 `reference` 和 `qwen_hypothesis_normalized` 重新调用 `compute_report_metrics()`。
+- `write_report_outputs(..., prefix="qwen")` 写出 Qwen 评估文件。
+
+Qwen 输出文件：
+
+```text
+artifacts/iu_xray_raw/qwen_metrics.json
+artifacts/iu_xray_raw/qwen_predictions.jsonl
+artifacts/iu_xray_raw/qwen_references.txt
+artifacts/iu_xray_raw/qwen_hypotheses.txt
+```
+
+注意：指标计算使用的是 `qwen_hypothesis_normalized`，不是原始自然语言格式的 `qwen_hypothesis`。这样可以避免大小写、标点粘连、空格格式导致 BLEU / ROUGE / METEOR / CIDEr 被额外惩罚。
+
+## 7. 常用参数对应关系
+
+| 参数 | 作用 | 对应代码 |
+| --- | --- | --- |
+| `--phase train` | 训练模型 | `main()` 里的训练循环 |
+| `--phase infer` | 加载 checkpoint 后只推理/评估 | `utils.py::load()` + `run_evaluation()` |
+| `--data-root` | Indiana 数据根目录 | `build_dataset_triplet()` 传给 `IndianaRawIUXRAY` |
+| `--output-dir` | checkpoint 和评估文件输出目录 | `default_checkpoint_path()`、`write_report_outputs()` |
+| `--checkpoint-path` | 指定要加载的模型权重 | `utils.py::load()` |
+| `--pretrained-backbone` | 使用 torchvision 的 DenseNet121 预训练权重 | `build_model()` |
+| `--run-eval` | 训练后或推理时输出 BLEU / ROUGE-L | `run_evaluation()` |
+| `--include-paper-metrics` | 额外输出 METEOR / CIDEr | `compute_paper_metrics()` |
+| `--run-qwen-eval` | 对主模型输出做 Qwen 后处理再评估 | `maybe_run_qwen()` |
+| `--qwen-model-path` | 本地 Qwen 模型目录 | `rewrite_reports_with_qwen()` |
+
+## 8. 常见问题
+
+### checkpoint not found
+
+检查 `--checkpoint-path` 是否真实存在：
+
+```bash
+ls /root/autodl-tmp/Context-Enhanced-Framework/artifacts/iu_xray_raw/checkpoints
+```
+
+### 缺少 pandas / sentencepiece / sklearn
+
+安装主模型依赖：
 
 ```bash
 pip install pandas pillow sentencepiece scikit-learn tqdm
 ```
 
-### 11.3 `torchvision` 下载预训练权重失败
+### DenseNet 预训练权重下载失败
 
-先去掉 `--pretrained-backbone` 验证流程。  
-如果一定要贴近论文设置，再单独处理权重下载或缓存。
+先去掉 `--pretrained-backbone` 跑通流程。这样会偏离论文设置，但能确认数据、训练、评估链路是否正常。
 
-### 11.4 `--run-qwen-eval` 报 transformers 相关错误
+### METEOR / CIDEr 报错
 
-说明你还没在 Qwen 独立环境里装依赖，或者当前 PyTorch / CUDA 组合不兼容。  
-优先保证主模型复现跑通，再单独排 Qwen 环境。
+如果命令里有 `--include-paper-metrics`，确认：
 
-### 11.5 指标文件输出了，但结果很差
+```bash
+java -version
+python -c "from pycocoevalcap.meteor.meteor import Meteor"
+python -c "from pycocoevalcap.cider.cider import Cider"
+```
+
+如果暂时不需要论文扩展指标，去掉 `--include-paper-metrics`，基础 BLEU / ROUGE-L 不依赖这些包。
+
+### Qwen 报 transformers 或 CUDA 错误
+
+先确认主模型的 `metrics.json` 正常生成。Qwen 是额外后处理链路，可以等主模型评估稳定后再单独排查环境。
+
+### 指标明显异常偏低
 
 优先检查：
 
-- 是否真的用了 `findings` 作为目标
-- 图像文件名是否和 `indiana_projections.csv` 对得上
-- `uid` 是否和旧标签文件映射成功
-- 是否用到了预训练 DenseNet 权重
-
-如果是 `qwen_metrics.json` 明显异常偏低，再额外检查：
-
-- 是否还在使用旧版代码，旧版会把自然语言格式的 Qwen 输出直接拿去算 BLEU / ROUGE
-- `qwen_predictions.jsonl` 里的 `qwen_hypothesis` 和 `qwen_hypothesis_normalized` 是否都已正常输出
-- 是否误把 `qwen_hypothesis` 的原始自然语言文本当成了评测输入
-
-## 12. 最小执行顺序
-
-如果你想最快开始跑，建议按这个顺序：
-
-1. 上传当前项目到 `/root/autodl-tmp/Context-Enhanced-framework/`
-2. 检查 Python / Torch / CUDA
-3. 安装 `pandas pillow sentencepiece scikit-learn tqdm`
-4. 先运行一条不带 Qwen 的训练命令
-5. 确认 `metrics.json` 正常输出
-6. 再决定是否单独搭 Qwen 后处理环境
+- `indiana_reports.csv` 里的 `findings` 是否正常读取。
+- 图像文件名是否和 `indiana_projections.csv` 对得上。
+- `qwen_metrics.json` 是否使用了 `qwen_hypothesis_normalized`。
+- 是否误把没有规范化的 `qwen_hypothesis` 当作评估输入。

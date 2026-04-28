@@ -94,8 +94,57 @@ def rouge_l(reference, hypothesis):
     return round((2 * precision * recall) / (precision + recall), 6)
 
 
-def compute_report_metrics(references, hypotheses):
-    return {
+def _load_coco_scorer_factories():
+    try:
+        from pycocoevalcap.cider.cider import Cider
+        from pycocoevalcap.meteor.meteor import Meteor
+    except ImportError as exc:
+        raise ImportError(
+            "METEOR/CIDEr paper metrics require pycocoevalcap. "
+            "Install it on the cloud server with `pip install pycocoevalcap nltk`, "
+            "and make sure Java is available for METEOR."
+        ) from exc
+    return {"meteor": Meteor, "cider": Cider}
+
+
+def _build_coco_metric_inputs(references, hypotheses):
+    if len(references) != len(hypotheses):
+        raise ValueError("references and hypotheses must have the same length")
+    references_by_id = {}
+    hypotheses_by_id = {}
+    for index, (reference, hypothesis) in enumerate(zip(references, hypotheses)):
+        references_by_id[index] = [str(reference)]
+        hypotheses_by_id[index] = [str(hypothesis)]
+    return references_by_id, hypotheses_by_id
+
+
+def _close_scorer(scorer):
+    meteor_process = getattr(scorer, "meteor_p", None)
+    if meteor_process is not None:
+        meteor_process.kill()
+
+
+def compute_paper_metrics(references, hypotheses, scorer_factories=None):
+    scorer_factories = scorer_factories or _load_coco_scorer_factories()
+    references_by_id, hypotheses_by_id = _build_coco_metric_inputs(references, hypotheses)
+    metrics = {}
+
+    scorer = scorer_factories["meteor"]()
+    try:
+        score, _ = scorer.compute_score(references_by_id, hypotheses_by_id)
+        metrics["meteor"] = round(float(score), 6)
+    finally:
+        _close_scorer(scorer)
+
+    scorer = scorer_factories["cider"]()
+    score, _ = scorer.compute_score(references_by_id, hypotheses_by_id)
+    metrics["cider"] = round(float(score), 6)
+
+    return metrics
+
+
+def compute_report_metrics(references, hypotheses, include_paper_metrics=False, scorer_factories=None):
+    metrics = {
         "bleu_1": corpus_bleu(references, hypotheses, (1.0, 0.0, 0.0, 0.0)),
         "bleu_2": corpus_bleu(references, hypotheses, (0.5, 0.5, 0.0, 0.0)),
         "bleu_3": corpus_bleu(references, hypotheses, (1.0 / 3, 1.0 / 3, 1.0 / 3, 0.0)),
@@ -104,6 +153,15 @@ def compute_report_metrics(references, hypotheses):
         if references
         else 0.0,
     }
+    if include_paper_metrics:
+        try:
+            metrics.update(compute_paper_metrics(references, hypotheses, scorer_factories=scorer_factories))
+        except ImportError as exc:
+            raise ImportError(
+                "METEOR/CIDEr paper metrics require the optional server-side evaluation dependencies. "
+                "Install pycocoevalcap/nltk and Java on the cloud server before enabling this option."
+            ) from exc
+    return metrics
 
 
 def write_report_outputs(output_dir, references, hypotheses, metrics, records, prefix=""):

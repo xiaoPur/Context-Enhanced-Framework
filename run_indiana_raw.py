@@ -58,6 +58,11 @@ def parse_args():
     parser.add_argument("--pretrained-backbone", action="store_true", help="Use torchvision pretrained DenseNet121 weights.")
     parser.add_argument("--reload", action="store_true", help="Resume optimizer and scheduler states from checkpoint.")
     parser.add_argument("--run-eval", action="store_true", help="Run standard generation metrics after training/inference.")
+    parser.add_argument(
+        "--include-paper-metrics",
+        action="store_true",
+        help="Also compute METEOR and CIDEr with optional server-side pycocoevalcap dependencies.",
+    )
     parser.add_argument("--run-qwen-eval", action="store_true", help="Run Qwen post-processing evaluation after standard generation.")
     parser.add_argument("--qwen-model-path", default="", help="Local Qwen2.5-7B-Instruct directory.")
     parser.add_argument("--qwen-max-new-tokens", type=int, default=256)
@@ -252,7 +257,7 @@ def build_dataloaders(train_data, val_data, test_data, args, device):
     return train_loader, val_loader, test_loader
 
 
-def evaluate_generation(data_loader, dataset, model, device, threshold):
+def evaluate_generation(data_loader, dataset, model, device, threshold, include_paper_metrics=False):
     model.eval()
     records = []
     references = []
@@ -288,7 +293,7 @@ def evaluate_generation(data_loader, dataset, model, device, threshold):
                 )
             record_offset += batch_size
 
-    metrics = compute_report_metrics(references, hypotheses)
+    metrics = compute_report_metrics(references, hypotheses, include_paper_metrics=include_paper_metrics)
     return references, hypotheses, records, metrics
 
 
@@ -306,7 +311,7 @@ def maybe_run_qwen(records, output_dir, args):
     )
     references = [record["reference"] for record in qwen_records]
     hypotheses = [record["qwen_hypothesis_normalized"] for record in qwen_records]
-    metrics = compute_report_metrics(references, hypotheses)
+    metrics = compute_report_metrics(references, hypotheses, include_paper_metrics=args.include_paper_metrics)
     write_report_outputs(output_dir, references, hypotheses, metrics, qwen_records, prefix="qwen")
     return metrics
 
@@ -318,6 +323,7 @@ def run_evaluation(test_loader, test_data, model, args, output_dir):
         model,
         get_device(args.device),
         args.threshold,
+        include_paper_metrics=args.include_paper_metrics,
     )
     write_report_outputs(output_dir, references, hypotheses, metrics, records)
     qwen_metrics = maybe_run_qwen(records, output_dir, args) if args.run_qwen_eval else None

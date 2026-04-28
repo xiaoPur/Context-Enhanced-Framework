@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from unittest import mock
 from pathlib import Path
 
 from evaluation import compute_report_metrics, write_report_outputs
@@ -20,6 +21,42 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(metrics["bleu_1"], 1.0)
         self.assertEqual(metrics["bleu_4"], 1.0)
         self.assertEqual(metrics["rouge_l"], 1.0)
+        self.assertNotIn("meteor", metrics)
+        self.assertNotIn("cider", metrics)
+
+    def test_compute_report_metrics_can_include_paper_metrics_from_external_scorers(self):
+        class FakeMeteor:
+            def compute_score(self, references_by_id, hypotheses_by_id):
+                assert references_by_id == {0: ["no acute cardiopulmonary abnormality ."]}
+                assert hypotheses_by_id == {0: ["no acute cardiopulmonary abnormality ."]}
+                return 0.8754321, [0.8754321]
+
+        class FakeCider:
+            def compute_score(self, references_by_id, hypotheses_by_id):
+                assert references_by_id == {0: ["no acute cardiopulmonary abnormality ."]}
+                assert hypotheses_by_id == {0: ["no acute cardiopulmonary abnormality ."]}
+                return 1.2345678, [1.2345678]
+
+        metrics = compute_report_metrics(
+            references=["no acute cardiopulmonary abnormality ."],
+            hypotheses=["no acute cardiopulmonary abnormality ."],
+            include_paper_metrics=True,
+            scorer_factories={"meteor": FakeMeteor, "cider": FakeCider},
+        )
+
+        self.assertEqual(metrics["meteor"], 0.875432)
+        self.assertEqual(metrics["cider"], 1.234568)
+
+    def test_compute_report_metrics_requires_external_dependency_for_paper_metrics(self):
+        with mock.patch("evaluation._load_coco_scorer_factories", side_effect=ImportError("missing pycocoevalcap")):
+            with self.assertRaises(ImportError) as context:
+                compute_report_metrics(
+                    references=["no acute cardiopulmonary abnormality ."],
+                    hypotheses=["no acute cardiopulmonary abnormality ."],
+                    include_paper_metrics=True,
+                )
+
+        self.assertIn("METEOR/CIDEr", str(context.exception))
 
     def test_write_report_outputs_creates_expected_files(self):
         output_dir = LOCAL_TMP_ROOT / f"evaluation_case_{uuid.uuid4().hex}"
